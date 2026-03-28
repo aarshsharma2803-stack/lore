@@ -59,6 +59,7 @@ export default function CreatePage() {
   const [musicTrack, setMusicTrack] = useState<TrackStatus>("idle");
   const [showDirector, setShowDirector] = useState(false);
   const [uniquenessStatus, setUniquenessStatus] = useState<"checking" | "clear" | "adjusted" | null>(null);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
 
   const playerRef = useRef<HTMLDivElement>(null);
   const agentRef = useRef<HTMLDivElement>(null);
@@ -176,13 +177,17 @@ export default function CreatePage() {
   };
 
   // ── Start Lyria music stream ──
+  const lyriaModuleRef = useRef<Promise<typeof import("@/lib/lyria")> | null>(null);
+
   const startLyria = async (genre: string) => {
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!apiKey) return;
 
     try {
-      const { LyriaPlayer } = await import("@/lib/lyria");
-      const player = new LyriaPlayer();
+      const mod = lyriaModuleRef.current
+        ? await lyriaModuleRef.current
+        : await import("@/lib/lyria");
+      const player = new mod.LyriaPlayer();
       lyriaRef.current = player;
 
       player.onStateChange = (state) => {
@@ -190,7 +195,7 @@ export default function CreatePage() {
         else if (state === "stopped" || state === "error") setMusicTrack(state === "error" ? "error" : "done" as TrackStatus);
       };
 
-      setMusicTrack("loading");
+      // Connect silently — no "loading" indicator; music just starts playing
       player.connect(apiKey, genre);
     } catch (e) {
       console.error("Lyria start error:", e);
@@ -211,8 +216,8 @@ export default function CreatePage() {
       { label: "Video scene 3", status: "idle", percent: 0 },
     ]);
 
-    // Start Lyria immediately (non-blocking)
-    startLyria(storyGenre);
+    // Pre-load Lyria module in parallel so music starts instantly later
+    lyriaModuleRef.current = import("@/lib/lyria");
 
     try {
       const [narrationRes, scenesRes] = await Promise.all([
@@ -240,15 +245,19 @@ export default function CreatePage() {
         setNarrationTrack("error" as TrackStatus);
       }
 
+      let imagesReady = false;
       if (scenesRes.ok) {
         const scenesData = await scenesRes.json();
         if (scenesData.scenes?.length > 0) {
           setScenes(scenesData.scenes);
           setImageTrack("done");
+          imagesReady = true;
         }
       } else {
         setImageTrack("error" as TrackStatus);
       }
+
+      // Lyria music is started manually via the Score button in CinematicPlayer
 
       // Trigger Veo (non-blocking)
       fetch("/api/veo", {
@@ -286,6 +295,18 @@ export default function CreatePage() {
     }
   };
 
+  // ── Music toggle ──
+  const handleMusicToggle = async () => {
+    if (isMusicPlaying) {
+      lyriaRef.current?.stop();
+      lyriaRef.current = null;
+      setIsMusicPlaying(false);
+    } else {
+      await startLyria(storyGenre);
+      setIsMusicPlaying(true);
+    }
+  };
+
   // ── Reset everything ──
   const handleReset = () => {
     if (veoPollerRef.current) clearInterval(veoPollerRef.current);
@@ -311,6 +332,7 @@ export default function CreatePage() {
     setNarrationTrack("idle");
     setMusicTrack("idle");
     setUniquenessStatus(null);
+    setIsMusicPlaying(false);
   };
 
   // ── Build cinematic scenes for player ──
@@ -370,6 +392,8 @@ export default function CreatePage() {
                     audioUrl={audioUrl}
                     lyriaRef={lyriaRef}
                     storyTitle={storyTitle}
+                    onMusicToggle={handleMusicToggle}
+                    isMusicPlaying={isMusicPlaying}
                   />
                 </motion.div>
               )}

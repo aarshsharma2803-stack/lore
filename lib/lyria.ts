@@ -1,7 +1,8 @@
-// Lyria RealTime music streaming via Gemini WebSocket
-// Genre-adaptive background music score — correct Lyria protocol
+// Lyria 3 music generation via Gemini REST API
+// Genre-adaptive background music score
 
-const LYRIA_OUTPUT_HZ = 48000; // Lyria outputs 48kHz PCM
+const LYRIA_MODEL = "lyria-3-clip-preview";
+const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 const GENRE_PROMPTS: Record<string, string> = {
   fantasy: "Epic orchestral fantasy score, sweeping strings, heroic horns, magical harp, cinematic adventure",
@@ -12,81 +13,71 @@ const GENRE_PROMPTS: Record<string, string> = {
 };
 
 export class LyriaPlayer {
-  private ws: WebSocket | null = null;
-  private audioCtx: AudioContext | null = null;
+  private audioEl: HTMLAudioElement | null = null;
   private gainNode: GainNode | null = null;
-  private nextPlayTime = 0;
-  private isConnected = false;
+  private audioCtx: AudioContext | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
   public onStateChange?: (state: "connecting" | "streaming" | "stopped" | "error") => void;
 
-  // Collect all PCM chunks for export
-  public collectedPCM: ArrayBuffer[] = [];
-
-  connect(apiKey: string, genre: string) {
+  async connect(apiKey: string, genre: string) {
     try {
-      // 48kHz — Lyria's native output rate
-      this.audioCtx = new AudioContext({ sampleRate: LYRIA_OUTPUT_HZ });
+      this.onStateChange?.("connecting");
+
+      const prompt = GENRE_PROMPTS[genre] ?? GENRE_PROMPTS.fantasy;
+      const url = `${API_BASE}/models/${LYRIA_MODEL}:generateContent?key=${apiKey}`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["AUDIO"] },
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("Lyria API error:", res.status, await res.text());
+        this.onStateChange?.("error");
+        return;
+      }
+
+      const data = await res.json();
+      let audioBase64: string | null = null;
+      let mimeType = "audio/mpeg";
+
+      for (const cand of data.candidates ?? []) {
+        for (const part of cand.content?.parts ?? []) {
+          if (part.inlineData?.data) {
+            audioBase64 = part.inlineData.data;
+            mimeType = part.inlineData.mimeType || mimeType;
+            break;
+          }
+        }
+        if (audioBase64) break;
+      }
+
+      if (!audioBase64) {
+        console.error("Lyria returned no audio");
+        this.onStateChange?.("error");
+        return;
+      }
+
+      // Create audio element and play
+      const blob = this.base64ToBlob(audioBase64, mimeType);
+      const blobUrl = URL.createObjectURL(blob);
+
+      this.audioCtx = new AudioContext();
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.value = 0.3;
       this.gainNode.connect(this.audioCtx.destination);
-      this.nextPlayTime = this.audioCtx.currentTime + 0.1;
 
-      this.onStateChange?.("connecting");
+      this.audioEl = new Audio(blobUrl);
+      this.audioEl.loop = true;
+      this.sourceNode = this.audioCtx.createMediaElementSource(this.audioEl);
+      this.sourceNode.connect(this.gainNode);
 
-      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onopen = () => {
-        // Lyria setup — no speechConfig/voiceConfig (those are Gemini Live features)
-        this.ws!.send(JSON.stringify({
-          setup: {
-            model: "models/lyria-realtime-exp",
-          },
-        }));
-      };
-
-      this.ws.onmessage = async (event) => {
-        try {
-          let raw = event.data;
-          if (raw instanceof Blob) raw = await raw.text();
-          const data = JSON.parse(raw);
-
-          // Setup complete → send music prompt immediately (no timeout needed)
-          if (data.setupComplete) {
-            const prompt = GENRE_PROMPTS[genre] ?? GENRE_PROMPTS.fantasy;
-            this.ws!.send(JSON.stringify({
-              weightedPrompts: [{ text: prompt, weight: 1.0 }],
-            }));
-            this.isConnected = true;
-            this.onStateChange?.("streaming");
-            return;
-          }
-
-          // Audio chunks
-          const parts = data.serverContent?.modelTurn?.parts;
-          if (!parts) return;
-
-          for (const part of parts) {
-            if (part.inlineData?.mimeType?.startsWith("audio/")) {
-              const raw = atob(part.inlineData.data as string);
-              const buf = new ArrayBuffer(raw.length);
-              const view = new Uint8Array(buf);
-              for (let i = 0; i < raw.length; i++) view[i] = raw.charCodeAt(i);
-              this.collectedPCM.push(buf);
-              this.scheduleAudio(buf);
-            }
-          }
-        } catch { /* skip parse errors */ }
-      };
-
-      this.ws.onerror = () => {
-        this.onStateChange?.("error");
-      };
-
-      this.ws.onclose = () => {
-        if (this.isConnected) this.onStateChange?.("stopped");
-        this.isConnected = false;
-      };
+      await this.audioEl.play();
+      this.onStateChange?.("streaming");
 
     } catch (e) {
       console.error("Lyria connect error:", e);
@@ -94,26 +85,11 @@ export class LyriaPlayer {
     }
   }
 
-  private scheduleAudio(pcmBuffer: ArrayBuffer) {
-    if (!this.audioCtx || !this.gainNode) return;
-    try {
-      const view = new DataView(pcmBuffer);
-      const samples = pcmBuffer.byteLength / 2;
-      const audioBuffer = this.audioCtx.createBuffer(1, samples, LYRIA_OUTPUT_HZ);
-      const channelData = audioBuffer.getChannelData(0);
-      for (let i = 0; i < samples; i++) {
-        channelData[i] = view.getInt16(i * 2, true) / 32768;
-      }
-      const source = this.audioCtx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.gainNode);
-      const now = this.audioCtx.currentTime;
-      if (this.nextPlayTime < now) this.nextPlayTime = now + 0.02;
-      source.start(this.nextPlayTime);
-      this.nextPlayTime += audioBuffer.duration;
-    } catch (e) {
-      console.error("Lyria audio schedule error:", e);
-    }
+  private base64ToBlob(b64: string, mime: string): Blob {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
   }
 
   setVolume(v: number) {
@@ -123,26 +99,22 @@ export class LyriaPlayer {
   fadeOut(durationSec = 2) {
     if (!this.gainNode || !this.audioCtx) return;
     this.gainNode.gain.linearRampToValueAtTime(0, this.audioCtx.currentTime + durationSec);
+    setTimeout(() => this.stop(), durationSec * 1000);
+  }
+
+  // Stub for backward compat with export (no raw PCM in REST mode)
+  getMergedPCM(): ArrayBuffer | null {
+    return null;
   }
 
   stop() {
-    this.ws?.close();
-    this.ws = null;
-    this.isConnected = false;
+    this.audioEl?.pause();
+    this.audioEl = null;
+    this.sourceNode?.disconnect();
+    this.sourceNode = null;
     try { this.audioCtx?.close(); } catch { /* ignore */ }
     this.audioCtx = null;
     this.gainNode = null;
     this.onStateChange?.("stopped");
-  }
-
-  getMergedPCM(): ArrayBuffer {
-    const totalBytes = this.collectedPCM.reduce((sum, b) => sum + b.byteLength, 0);
-    const merged = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of this.collectedPCM) {
-      merged.set(new Uint8Array(chunk), offset);
-      offset += chunk.byteLength;
-    }
-    return merged.buffer;
   }
 }

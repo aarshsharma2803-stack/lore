@@ -72,7 +72,7 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
 
   const getSystemInstruction = useCallback(() => {
     if (siteWide || !storyContext || storyContext.length < 50) {
-      return `You are MintBot, a helpful 24/7 AI assistant for MintTales — a platform where users create AI-generated ${genre} stories, cinematic videos with Veo 2, and mint them as NFTs on Solana. Help users with story creation, video generation, NFT minting, and anything else on the platform. Keep responses short and friendly (2-3 sentences max). Current context: ${storyContext?.slice(0, 300) || "home page"}.`;
+      return `You are LoreBot, a helpful 24/7 AI assistant for Lore — a platform where users create AI-generated ${genre} stories, cinematic videos with Veo 2, and mint them as NFTs on Solana. Help users with story creation, video generation, NFT minting, and anything else on the platform. Keep responses short and friendly (2-3 sentences max). Current context: ${storyContext?.slice(0, 300) || "home page"}.`;
     }
     return `You are a creative AI co-author helping craft a ${genre} story. The user will speak their ideas and you respond with enthusiastic, concise suggestions (2-3 sentences max). Keep responses short and punchy. Current story context: ${storyContext.slice(0, 400)}.`;
   }, [genre, storyContext, siteWide]);
@@ -150,7 +150,7 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
           clearTimeout(setupTimeout);
           setStatus("ready");
           const greeting = siteWide
-            ? `Hi! I'm MintBot, your AI assistant. Ask me anything about MintTales!`
+            ? `Hi! I'm LoreBot, your AI assistant. Ask me anything about Lore!`
             : `Hi! I'm your ${genre} story co-author. Tell me your idea and I'll help shape it!`;
           setMessages([{ role: "ai", text: greeting }]);
           return;
@@ -351,7 +351,7 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
                   transition={{ repeat: Infinity, duration: 0.8 }}
                 />
                 <span className="text-[13px] font-semibold text-white">
-                  {siteWide ? "MintBot" : "AI Co-Author"}
+                  {siteWide ? "LoreBot" : "AI Co-Author"}
                 </span>
                 <span className="text-[10px] text-[var(--text-quaternary,#71717a)] font-mono uppercase tracking-wider">Live API</span>
               </div>

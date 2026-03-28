@@ -15,6 +15,8 @@ interface CinematicPlayerProps {
   audioUrl: string | null;
   lyriaRef?: React.MutableRefObject<LyriaPlayer | null>;
   storyTitle?: string;
+  onMusicToggle?: () => void;
+  isMusicPlaying?: boolean;
 }
 
 interface ExportProgress {
@@ -29,7 +31,7 @@ function base64ToObjectUrl(b64: string, mimeType: string): string {
   return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 }
 
-export default function CinematicPlayer({ scenes, audioUrl, lyriaRef, storyTitle }: CinematicPlayerProps) {
+export default function CinematicPlayer({ scenes, audioUrl, lyriaRef, storyTitle, onMusicToggle, isMusicPlaying }: CinematicPlayerProps) {
   const [activeScene, setActiveScene] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
@@ -206,6 +208,32 @@ export default function CinematicPlayer({ scenes, audioUrl, lyriaRef, storyTitle
         <span className="text-[10px] text-[var(--text-quaternary)]">
           {hasVideos ? "🎬 Veo 2" : "🖼 AI scene"}
         </span>
+
+        {/* Lyria music toggle */}
+        {onMusicToggle && (
+          <button
+            onClick={onMusicToggle}
+            title={isMusicPlaying ? "Stop background score" : "Start background score"}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] text-[11px] font-medium transition-all duration-200"
+            style={{
+              background: isMusicPlaying ? "var(--genre-glow)" : "var(--bg-surface)",
+              border: `1px solid ${isMusicPlaying ? "var(--genre-primary)" : "var(--border-default)"}`,
+              color: isMusicPlaying ? "var(--genre-primary)" : "var(--text-secondary)",
+            }}
+          >
+            {isMusicPlaying ? (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Score
+              </>
+            ) : (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                Score
+              </>
+            )}
+          </button>
+        )}
 
         {/* Download button */}
         <motion.button

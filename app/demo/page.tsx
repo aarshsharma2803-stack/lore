@@ -19,7 +19,7 @@ interface DemoPhase {
 }
 
 const PHASES: DemoPhase[] = [
-  { id: "init", label: "Initializing", icon: "⚡", description: "Setting up MintTales experience" },
+  { id: "init", label: "Initializing", icon: "⚡", description: "Setting up Lore experience" },
   { id: "genre", label: "Genre Selection", icon: "🐉", description: "Selecting Fantasy genre" },
   { id: "story", label: "AI Story Generation", icon: "✦", description: "Gemini co-authoring your story" },
   { id: "save", label: "Database Storage", icon: "🗄️", description: "Saving to MongoDB Atlas" },
@@ -281,7 +281,7 @@ export default function DemoPage() {
             </h1>
 
             <p className="text-gray-400 text-lg mb-4 max-w-lg mx-auto">
-              Watch MintTales run the complete pipeline automatically — from AI story generation to blockchain NFT minting.
+              Watch Lore run the complete pipeline automatically — from AI story generation to blockchain NFT minting.
             </p>
 
             {/* Tech stack involved */}

@@ -8,7 +8,10 @@ let db: Db;
 export async function getDb(): Promise<Db> {
   if (db) return db;
 
-  client = new MongoClient(MONGODB_URI);
+  client = new MongoClient(MONGODB_URI, {
+    connectTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 5000,
+  });
   await client.connect();
   db = client.db("minttales");
   return db;
