@@ -108,6 +108,16 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
     const ws = new WebSocket(`${WS_URL}?key=${apiKey}`);
     wsRef.current = ws;
 
+    // Timeout: if setup doesn't complete in 10s, close and retry
+    const setupTimeout = setTimeout(() => {
+      if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+        console.error("Live API setup timeout — closing and retrying");
+        setErrorMsg("Setup timeout — retrying…");
+        setStatus("error");
+        ws.close();
+      }
+    }, 10000);
+
     ws.onopen = () => {
       ws.send(JSON.stringify({
         setup: {
@@ -127,11 +137,17 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
       }));
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       try {
-        const msg = JSON.parse(event.data as string);
+        // Browser may receive data as Blob instead of string
+        let raw = event.data;
+        if (raw instanceof Blob) {
+          raw = await raw.text();
+        }
+        const msg = JSON.parse(raw);
 
         if (msg.setupComplete) {
+          clearTimeout(setupTimeout);
           setStatus("ready");
           const greeting = siteWide
             ? `Hi! I'm MintBot, your AI assistant. Ask me anything about MintTales!`
@@ -170,7 +186,7 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
           if (userText) setMessages(prev => [...prev, { role: "user", text: userText }]);
         }
 
-      } catch { /* skip parse errors */ }
+      } catch (e) { console.error("Live API message parse error:", e); }
     };
 
     ws.onerror = (e) => {

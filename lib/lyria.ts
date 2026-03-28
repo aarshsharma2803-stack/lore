@@ -45,9 +45,11 @@ export class LyriaPlayer {
         }));
       };
 
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = async (event) => {
         try {
-          const data = JSON.parse(event.data as string);
+          let raw = event.data;
+          if (raw instanceof Blob) raw = await raw.text();
+          const data = JSON.parse(raw);
 
           // Setup complete → send music prompt immediately (no timeout needed)
           if (data.setupComplete) {
